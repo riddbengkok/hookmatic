@@ -1,5 +1,3 @@
-import 'dotenv/config'
-import { serve } from '@hono/node-server'
 import { Hono } from 'hono'
 import { cors } from 'hono/cors'
 import { zValidator } from '@hono/zod-validator'
@@ -149,7 +147,4 @@ Balas HANYA dalam format JSON sesuai skema yang diminta.`
 
 app.get('/health', (c) => c.text('OK'))
 
-const port = process.env.PORT ? parseInt(process.env.PORT) : 3000
-serve({ fetch: app.fetch, port }, (info) => {
-  console.log(`✅ Server running on http://localhost:${info.port}`)
-})
+export default app

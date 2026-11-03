@@ -41,7 +41,7 @@ const TONES = [
   { value: 'Educational', description: 'Teaches something' },
 ];
 
-const API_URL = import.meta.env.VITE_API_URL ?? 'http://localhost:3000';
+const API_URL = import.meta.env.VITE_API_URL ?? (import.meta.env.DEV ? 'http://localhost:3000' : '/api');
 
 function isHookResponse(value: unknown): value is HookResponse {
   if (typeof value !== 'object' || value === null || !('hooks' in value) || !Array.isArray(value.hooks)) {
