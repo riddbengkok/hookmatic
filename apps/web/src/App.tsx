@@ -1,5 +1,21 @@
-import { useState } from 'react';
-import { Loader2, Copy, CheckCircle2, Sparkles } from 'lucide-react';
+import { useState, type FormEvent } from 'react';
+import './App.css';
+import {
+  ArrowDown,
+  ArrowUpRight,
+  Check,
+  Clapperboard,
+  Clock3,
+  Copy,
+  Lightbulb,
+  LoaderCircle,
+  MessageCircle,
+  Mic2,
+  RotateCcw,
+  Sparkles,
+  WandSparkles,
+  Zap,
+} from 'lucide-react';
 import type { HookResponse } from '@hookmatic/shared';
 
 const NICHES = [
@@ -18,38 +34,64 @@ const AUDIENCES = [
   'Hiker / Outdoor Explorer',
 ];
 
-const TONES: { value: string; emoji: string }[] = [
-  { value: 'Relatable', emoji: '🤝' },
-  { value: 'Contrarian', emoji: '🔥' },
-  { value: 'Storytime', emoji: '📖' },
-  { value: 'Educational', emoji: '💡' },
+const TONES = [
+  { value: 'Relatable', description: 'Feels like a friend' },
+  { value: 'Contrarian', description: 'Flips the script' },
+  { value: 'Storytime', description: 'Opens mid-story' },
+  { value: 'Educational', description: 'Teaches something' },
 ];
 
 const API_URL = import.meta.env.VITE_API_URL ?? 'http://localhost:3000';
 
+function isHookResponse(value: unknown): value is HookResponse {
+  if (typeof value !== 'object' || value === null || !('hooks' in value) || !Array.isArray(value.hooks)) {
+    return false;
+  }
+
+  return value.hooks.every((hook: unknown) => {
+    if (typeof hook !== 'object' || hook === null) return false;
+
+    return (
+      'hookTitle' in hook &&
+      typeof hook.hookTitle === 'string' &&
+      'hookScript' in hook &&
+      typeof hook.hookScript === 'string' &&
+      'bodyBeat' in hook &&
+      typeof hook.bodyBeat === 'string' &&
+      'cta' in hook &&
+      typeof hook.cta === 'string' &&
+      'hashtags' in hook &&
+      Array.isArray(hook.hashtags) &&
+      hook.hashtags.every((tag: unknown) => typeof tag === 'string') &&
+      'estimatedSeconds' in hook &&
+      typeof hook.estimatedSeconds === 'number' &&
+      'platformTips' in hook &&
+      typeof hook.platformTips === 'string'
+    );
+  });
+}
+
 export default function App() {
-  // Form state
   const [niche, setNiche] = useState(NICHES[0]);
-  const [audience, setAudience] = useState(AUDIENCES[0]);
+  const [audience, setAudience] = useState(AUDIENCES[2]);
   const [tone, setTone] = useState(TONES[0].value);
   const [format, setFormat] = useState<'Singkat' | 'Detail'>('Singkat');
   const [productTitle, setProductTitle] = useState('');
   const [productDescription, setProductDescription] = useState('');
-
-  // UI state
   const [loading, setLoading] = useState(false);
   const [results, setResults] = useState<HookResponse['hooks'] | null>(null);
   const [error, setError] = useState('');
   const [copiedIndex, setCopiedIndex] = useState<number | null>(null);
+  const [copyError, setCopyError] = useState('');
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
     setLoading(true);
     setError('');
-    setResults(null);
+    setCopyError('');
 
     try {
-      const res = await fetch(`${API_URL}/v1/generate`, {
+      const response = await fetch(`${API_URL}/v1/generate`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -63,263 +105,323 @@ export default function App() {
         }),
       });
 
-      const data = await res.json();
-
-      if (!res.ok) {
-        throw new Error(data?.error ?? `Server error ${res.status}`);
+      const payload: unknown = await response.json().catch(() => null);
+      if (!response.ok) {
+        const message =
+          typeof payload === 'object' &&
+          payload !== null &&
+          'error' in payload &&
+          typeof payload.error === 'string'
+            ? payload.error
+            : `The request failed (${response.status}). Please try again.`;
+        throw new Error(message);
       }
 
-      setResults(data.hooks);
-    } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : 'Terjadi kesalahan. Coba lagi.';
-      setError(message);
+      if (!isHookResponse(payload)) {
+        throw new Error('The server returned an unexpected response. Please try again.');
+      }
+
+      setResults(payload.hooks);
+    } catch (caught) {
+      setError(
+        caught instanceof TypeError
+          ? 'Could not reach Hookmatic. Check your connection and try again.'
+          : caught instanceof Error
+            ? caught.message
+            : 'Something went wrong. Please try again.',
+      );
     } finally {
       setLoading(false);
     }
   };
 
-  const copyToClipboard = (item: HookResponse['hooks'][number], index: number) => {
+  const copyToClipboard = async (item: HookResponse['hooks'][number], index: number) => {
     const text = [
-      `📌 ${item.hookTitle}`,
+      item.hookTitle,
       '',
-      `🎬 Hook: "${item.hookScript}"`,
+      `HOOK\n${item.hookScript}`,
       '',
-      `📝 Alur:\n${item.bodyBeat}`,
+      `SCRIPT\n${item.bodyBeat}`,
       '',
-      `📢 CTA: ${item.cta}`,
+      `CTA\n${item.cta}`,
       '',
       item.hashtags.join(' '),
+      '',
+      `CREATOR NOTE\n${item.platformTips}`,
     ].join('\n');
 
-    navigator.clipboard.writeText(text);
-    setCopiedIndex(index);
-    setTimeout(() => setCopiedIndex(null), 2000);
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopiedIndex(index);
+      setCopyError('');
+      window.setTimeout(() => setCopiedIndex(null), 2000);
+    } catch {
+      setCopyError('Clipboard access is unavailable in this browser.');
+    }
   };
 
   return (
-    <div className="min-h-screen bg-[#f8f8f8] p-4 md:p-10 font-sans">
-      <div className="max-w-5xl mx-auto space-y-8">
-
-        {/* Header */}
-        <div className="text-center space-y-1">
-          <div className="flex items-center justify-center gap-2 mb-2">
-            <Sparkles className="w-7 h-7 text-black" />
-            <h1 className="text-4xl md:text-5xl font-black tracking-tight text-black">Hookmatic</h1>
-          </div>
-          <p className="text-gray-500 text-base">Content script inspiration - eai</p>
+    <div className="app-shell">
+      <header className="topbar">
+        <a className="wordmark" href="/" aria-label="Hookmatic home">
+          <span className="wordmark-icon"><Clapperboard size={19} strokeWidth={2.2} /></span>
+          <span>hookmatic<span className="wordmark-period">.</span></span>
+        </a>
+        <div className="topbar-note">
+          <span className="status-dot" />
+          <span>Your next good idea starts here</span>
         </div>
+        <a className="topbar-link" href="#studio">
+          Open studio <ArrowDown size={14} />
+        </a>
+      </header>
 
-        <div className="grid grid-cols-1 md:grid-cols-[340px_1fr] gap-6">
-
-          {/* ---- FORM SIDEBAR ---- */}
-          <form onSubmit={handleSubmit} className="bg-white rounded-2xl border border-gray-200 shadow-sm p-6 space-y-5 h-fit">
-
-            {/* Niche */}
-            <div className="space-y-1.5">
-              <label className="text-xs font-bold text-gray-500 uppercase tracking-wider">Niche</label>
-              <select
-                className="w-full p-2.5 border border-gray-200 rounded-xl text-sm bg-gray-50 focus:ring-2 focus:ring-black focus:border-black outline-none transition"
-                value={niche}
-                onChange={(e) => setNiche(e.target.value)}
-              >
-                {NICHES.map((n) => <option key={n}>{n}</option>)}
-              </select>
-            </div>
-
-            {/* Audience */}
-            <div className="space-y-1.5">
-              <label className="text-xs font-bold text-gray-500 uppercase tracking-wider">Target Audience</label>
-              <select
-                className="w-full p-2.5 border border-gray-200 rounded-xl text-sm bg-gray-50 focus:ring-2 focus:ring-black focus:border-black outline-none transition"
-                value={audience}
-                onChange={(e) => setAudience(e.target.value)}
-              >
-                {AUDIENCES.map((a) => <option key={a}>{a}</option>)}
-              </select>
-            </div>
-
-            {/* Tone */}
-            <div className="space-y-1.5">
-              <label className="text-xs font-bold text-gray-500 uppercase tracking-wider">Tone / Gaya</label>
-              <div className="grid grid-cols-2 gap-2">
-                {TONES.map((t) => (
-                  <button
-                    key={t.value}
-                    type="button"
-                    onClick={() => setTone(t.value)}
-                    className={`py-2 px-3 text-xs font-semibold rounded-xl border transition-all ${
-                      tone === t.value
-                        ? 'bg-black text-white border-black'
-                        : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'
-                    }`}
-                  >
-                    {t.emoji} {t.value}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            {/* Format */}
-            <div className="space-y-1.5">
-              <label className="text-xs font-bold text-gray-500 uppercase tracking-wider">Format Output</label>
-              <div className="grid grid-cols-2 gap-2">
-                {(['Singkat', 'Detail'] as const).map((f) => (
-                  <button
-                    key={f}
-                    type="button"
-                    onClick={() => setFormat(f)}
-                    className={`py-2 px-3 text-xs font-semibold rounded-xl border transition-all ${
-                      format === f
-                        ? 'bg-black text-white border-black'
-                        : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'
-                    }`}
-                  >
-                    {f === 'Singkat' ? '⚡ Singkat' : '📋 Detail'}
-                  </button>
-                ))}
-              </div>
-              <p className="text-xs text-gray-400">
-                {format === 'Singkat' ? '15–30 detik · hook + ide kasar' : '45–90 detik · naskah lengkap per babak'}
+      <main className="page-content" id="studio">
+        <section className="intro">
+          <div className="eyebrow"><span /> THE SHORT-FORM SCRIPT STUDIO</div>
+          <div className="intro-row">
+            <div>
+              <h1>Make the first<br className="desktop-break" /> three seconds <em>count.</em></h1>
+              <p className="intro-copy">
+                Good videos start with a line worth stopping for. Find yours, then build the rest.
               </p>
             </div>
+            <div className="intro-aside">
+              <span className="aside-icon"><Mic2 size={17} /></span>
+              <p>Made for creators who have something real to say.</p>
+            </div>
+          </div>
+        </section>
 
-            {/* Divider */}
-            <div className="border-t border-gray-100 pt-1">
-              <p className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-3">Produk / Konten (Opsional)</p>
+        <div className="studio-grid">
+          <form className="brief-panel" onSubmit={handleSubmit}>
+            <div className="panel-heading">
+              <div>
+                <span className="section-index">01 / YOUR BRIEF</span>
+                <h2>Set the scene</h2>
+              </div>
+              <span className="heading-mark"><WandSparkles size={17} /></span>
+            </div>
 
-              {/* Product Title */}
-              <div className="space-y-1.5 mb-3">
-                <label className="text-xs text-gray-500 font-medium">Judul Produk / Video</label>
+            <div className="field">
+              <label htmlFor="niche">Your corner of the internet</label>
+              <select id="niche" value={niche} onChange={(event) => setNiche(event.target.value)}>
+                {NICHES.map((option) => <option key={option}>{option}</option>)}
+              </select>
+            </div>
+
+            <div className="field">
+              <label htmlFor="audience">Who are you talking to?</label>
+              <select id="audience" value={audience} onChange={(event) => setAudience(event.target.value)}>
+                {AUDIENCES.map((option) => <option key={option}>{option}</option>)}
+              </select>
+            </div>
+
+            <fieldset className="field tone-field">
+              <legend>Pick a point of view</legend>
+              <div className="tone-grid">
+                {TONES.map((option) => (
+                  <button
+                    className={`tone-option${tone === option.value ? ' is-selected' : ''}`}
+                    key={option.value}
+                    type="button"
+                    aria-pressed={tone === option.value}
+                    onClick={() => setTone(option.value)}
+                  >
+                    <span>{option.value}</span>
+                    <small>{option.description}</small>
+                  </button>
+                ))}
+              </div>
+            </fieldset>
+
+            <fieldset className="field format-field">
+              <legend>How much are we making?</legend>
+              <div className="format-options">
+                <button
+                  type="button"
+                  className={`format-option${format === 'Singkat' ? ' is-selected' : ''}`}
+                  aria-pressed={format === 'Singkat'}
+                  onClick={() => setFormat('Singkat')}
+                >
+                  <Zap size={15} />
+                  <span><strong>Quick take</strong><small>15–30 sec</small></span>
+                </button>
+                <button
+                  type="button"
+                  className={`format-option${format === 'Detail' ? ' is-selected' : ''}`}
+                  aria-pressed={format === 'Detail'}
+                  onClick={() => setFormat('Detail')}
+                >
+                  <Clapperboard size={15} />
+                  <span><strong>Full story</strong><small>45–90 sec</small></span>
+                </button>
+              </div>
+            </fieldset>
+
+            <div className="optional-fields">
+              <div className="optional-heading">
+                <span>Got a product or idea?</span>
+                <span className="optional-tag">OPTIONAL</span>
+              </div>
+              <div className="field">
+                <label htmlFor="product-title">Give it a name</label>
                 <input
+                  id="product-title"
                   type="text"
-                  placeholder="e.g. Nike Air Zoom Pegasus 41"
-                  className="w-full p-2.5 border border-gray-200 rounded-xl text-sm bg-gray-50 focus:ring-2 focus:ring-black focus:border-black outline-none transition placeholder:text-gray-300"
+                  placeholder="e.g. Your everyday running shoe"
                   value={productTitle}
-                  onChange={(e) => setProductTitle(e.target.value)}
+                  onChange={(event) => setProductTitle(event.target.value)}
                   maxLength={100}
                 />
               </div>
-
-              {/* Product Description */}
-              <div className="space-y-1.5">
-                <label className="text-xs text-gray-500 font-medium">Deskripsi Singkat</label>
+              <div className="field description-field">
+                <label htmlFor="product-description">What should we know?</label>
                 <textarea
-                  placeholder="e.g. Sepatu lari dengan cushioning ReactX, cocok untuk marathon dan daily training. Tersedia warna hitam, putih, volt."
-                  className="w-full p-2.5 border border-gray-200 rounded-xl text-sm bg-gray-50 focus:ring-2 focus:ring-black focus:border-black outline-none transition placeholder:text-gray-300 resize-none"
+                  id="product-description"
+                  placeholder="The details, the difference, the thing people always ask..."
                   value={productDescription}
-                  onChange={(e) => setProductDescription(e.target.value)}
+                  onChange={(event) => setProductDescription(event.target.value)}
                   rows={3}
                   maxLength={300}
                 />
-                <p className="text-right text-xs text-gray-300">{productDescription.length}/300</p>
+                <span className="character-count">{productDescription.length}/300</span>
               </div>
             </div>
 
-            {/* Submit */}
-            <button
-              type="submit"
-              disabled={loading}
-              className="w-full bg-black text-white py-3 rounded-xl font-semibold text-sm hover:bg-gray-800 disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-2 transition-colors"
-            >
-              {loading
-                ? <><Loader2 className="w-4 h-4 animate-spin" /> Generating...</>
-                : <><Sparkles className="w-4 h-4" /> Generate Hooks</>}
+            <button className="generate-button" type="submit" disabled={loading}>
+              {loading ? <LoaderCircle className="spin" size={17} /> : <Sparkles size={16} />}
+              {loading ? 'Finding your opening...' : 'Find my hooks'}
+              {!loading && <ArrowUpRight size={16} className="button-arrow" />}
             </button>
+            <p className="privacy-note">Three distinct starting points. No blank-page spiral.</p>
           </form>
 
-          {/* ---- RESULTS PANEL ---- */}
-          <div className="space-y-5">
+          <section className="results-panel" aria-live="polite">
+            <div className="results-heading">
+              <div>
+                <span className="section-index">02 / THE GOOD STUFF</span>
+                <h2>{results ? 'Pick your opening.' : 'Room for a little spark.'}</h2>
+              </div>
+              {results && (
+                <button
+                  type="button"
+                  className="reset-button"
+                  onClick={() => {
+                    setResults(null);
+                    setError('');
+                  }}
+                >
+                  <RotateCcw size={14} /> Start fresh
+                </button>
+              )}
+            </div>
 
-            {/* Error */}
             {error && (
-              <div className="bg-red-50 border border-red-200 text-red-600 px-4 py-3 rounded-xl text-sm font-medium">
-                ⚠️ {error}
+              <div className="error-banner" role="alert">
+                <span>{error}</span>
+                <button type="button" onClick={() => setError('')} aria-label="Dismiss error">×</button>
               </div>
             )}
 
-            {/* Empty state */}
-            {!results && !loading && !error && (
-              <div className="flex flex-col items-center justify-center min-h-[400px] border-2 border-dashed border-gray-200 rounded-2xl text-gray-400 text-sm text-center p-8 bg-white/50">
-                <Sparkles className="w-10 h-10 mb-3 opacity-20" />
-                <p className="font-medium text-gray-500">Hasil hook video Anda akan muncul di sini</p>
-                <p className="text-xs mt-1 text-gray-400">Isi form di samping, lalu klik Generate</p>
-              </div>
-            )}
+            {copyError && <p className="copy-error" role="status">{copyError}</p>}
 
-            {/* Loading */}
-            {loading && (
-              <div className="flex flex-col items-center justify-center min-h-[400px] border-2 border-dashed border-gray-200 rounded-2xl bg-white/50">
-                <Loader2 className="w-10 h-10 animate-spin text-black mb-3" />
-                <p className="text-sm font-medium text-gray-600 animate-pulse">AI sedang menyusun hook terbaik untuk Anda...</p>
-              </div>
-            )}
-
-            {/* Results */}
-            {results && results.map((item, idx) => (
-              <div key={idx} className="bg-white rounded-2xl border border-gray-200 shadow-sm p-6 relative overflow-hidden">
-                {/* Left accent bar */}
-                <div className="absolute top-0 left-0 w-1 h-full bg-black rounded-l-2xl" />
-
-                {/* Header */}
-                <div className="flex items-start justify-between gap-3 mb-5">
-                  <div>
-                    <span className="text-xs font-bold text-gray-400 uppercase tracking-wider">Hook #{idx + 1}</span>
-                    <h3 className="font-bold text-gray-900 text-base mt-0.5">{item.hookTitle}</h3>
+            {!results && !loading && (
+              <div className="empty-state">
+                <div className="empty-art" aria-hidden="true">
+                  <div className="art-sun" />
+                  <div className="art-card art-card-back" />
+                  <div className="art-card art-card-front">
+                    <span className="art-lines"><i /><i /><i /></span>
+                    <span className="art-star"><Sparkles size={17} /></span>
                   </div>
-                  <span className="flex-shrink-0 text-xs font-semibold bg-gray-100 text-gray-600 px-2.5 py-1 rounded-full">
-                    ~{item.estimatedSeconds}s
-                  </span>
+                  <span className="art-orbit orbit-one" />
+                  <span className="art-orbit orbit-two" />
                 </div>
-
-                <div className="space-y-4 text-sm">
-
-                  {/* Hook Script */}
-                  <div>
-                    <span className="text-xs font-bold text-gray-400 uppercase tracking-wider block mb-1.5">🎬 Hook (3 Detik Pertama)</span>
-                    <p className="font-semibold text-black bg-gray-50 border border-gray-100 px-4 py-3 rounded-xl leading-relaxed">
-                      "{item.hookScript}"
-                    </p>
-                  </div>
-
-                  {/* Body Beat */}
-                  <div>
-                    <span className="text-xs font-bold text-gray-400 uppercase tracking-wider block mb-1.5">📝 Alur / Naskah</span>
-                    <p className="text-gray-700 leading-relaxed whitespace-pre-wrap">{item.bodyBeat}</p>
-                  </div>
-
-                  {/* CTA */}
-                  <div>
-                    <span className="text-xs font-bold text-gray-400 uppercase tracking-wider block mb-1.5">📢 Call to Action</span>
-                    <p className="text-gray-800 font-medium">{item.cta}</p>
-                  </div>
-
-                  {/* Hashtags */}
-                  <div className="flex flex-wrap gap-1.5">
-                    {item.hashtags.map((tag) => (
-                      <span key={tag} className="text-xs font-medium text-blue-600 bg-blue-50 px-2 py-0.5 rounded-md">
-                        {tag}
-                      </span>
-                    ))}
-                  </div>
-
-                  {/* Footer */}
-                  <div className="pt-4 border-t border-gray-100 flex items-center justify-between gap-4">
-                    <p className="text-xs text-gray-400 italic flex-1">💡 {item.platformTips}</p>
-                    <button
-                      onClick={() => copyToClipboard(item, idx)}
-                      className="flex-shrink-0 flex items-center gap-1.5 text-xs font-semibold bg-gray-100 hover:bg-gray-200 text-gray-700 px-3 py-1.5 rounded-lg transition-colors"
-                    >
-                      {copiedIndex === idx
-                        ? <><CheckCircle2 className="w-3.5 h-3.5 text-green-600" /> Tersalin!</>
-                        : <><Copy className="w-3.5 h-3.5" /> Salin Script</>}
-                    </button>
-                  </div>
+                <span className="empty-kicker"><Lightbulb size={14} /> A good hook sounds like you</span>
+                <h3>Start with what<br />you actually care about.</h3>
+                <p>Tell us the niche, the person, and the point of view. We’ll find three ways in.</p>
+                <div className="empty-steps">
+                  <span><i>1</i> Set your brief</span>
+                  <span><i>2</i> Pick a point of view</span>
+                  <span><i>3</i> Make it yours</span>
                 </div>
               </div>
-            ))}
-          </div>
+            )}
+
+            {loading && !results && (
+              <div className="loading-state">
+                <div className="loading-orbit"><span /><Sparkles size={20} /></div>
+                <p>Looking for the line that makes someone stop.</p>
+                <span>Usually just a few seconds</span>
+              </div>
+            )}
+
+            {results && (
+              <>
+                {loading && <p className="refreshing-note"><LoaderCircle className="spin" size={13} /> Finding a fresh set of openings...</p>}
+                <div className="hook-list">
+                {results.map((item, index) => (
+                  <article className="hook-card" key={`${item.hookTitle}-${index}`}>
+                    <div className="hook-card-top">
+                      <span className="hook-number">0{index + 1}</span>
+                      <span className="hook-duration"><Clock3 size={13} /> {item.estimatedSeconds}s</span>
+                    </div>
+                    <h3>{item.hookTitle}</h3>
+
+                    <div className="hook-script">
+                      <div className="content-label"><MessageCircle size={13} /> SAY THIS FIRST</div>
+                      <p>“{item.hookScript}”</p>
+                    </div>
+
+                    <div className="hook-details">
+                      <div className="detail-block">
+                        <span className="content-label">THE FLOW</span>
+                        <p>{item.bodyBeat}</p>
+                      </div>
+                      <div className="detail-block cta-block">
+                        <span className="content-label">LAND THE PLANE</span>
+                        <p>{item.cta}</p>
+                      </div>
+                    </div>
+
+                    <div className="hook-bottom">
+                      <div className="hook-meta">
+                        <div className="hashtags">
+                          {item.hashtags.map((tag) => <span key={tag}>{tag}</span>)}
+                        </div>
+                        <p><Lightbulb size={13} /> {item.platformTips}</p>
+                      </div>
+                      <button
+                        type="button"
+                        className={`copy-button${copiedIndex === index ? ' is-copied' : ''}`}
+                        onClick={() => void copyToClipboard(item, index)}
+                        aria-label={copiedIndex === index ? `Hook ${index + 1} copied` : `Copy hook ${index + 1}`}
+                      >
+                        {copiedIndex === index ? <Check size={15} /> : <Copy size={14} />}
+                        {copiedIndex === index ? 'Copied' : 'Copy script'}
+                      </button>
+                    </div>
+                  </article>
+                ))}
+                </div>
+              </>
+            )}
+
+            {results && (
+              <div className="results-footnote">
+                <span className="status-dot" />
+                Good starting points, not scripts set in stone. Make them yours.
+              </div>
+            )}
+          </section>
         </div>
-      </div>
+
+        <footer className="page-footer">
+          <span>HOOKMATIC <i>·</i> MAKE SOMETHING THEY’LL REMEMBER</span>
+          <span>Less scrolling. More saying something.</span>
+        </footer>
+      </main>
     </div>
   );
 }
