@@ -9,7 +9,17 @@ import { GoogleGenAI, Type } from '@google/genai'
 const app = new Hono()
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY! })
 
-app.use('*', cors())
+const allowedOrigins = (process.env.ALLOWED_ORIGINS ?? 'http://localhost:5173')
+  .split(',')
+  .map((origin) => origin.trim())
+  .filter(Boolean)
+
+app.use(
+  '*',
+  cors({
+    origin: (origin) => (allowedOrigins.includes(origin) ? origin : null),
+  }),
+)
 
 // --- Request Schema ---
 const GenerateRequestSchema = z.object({
@@ -110,7 +120,7 @@ Balas HANYA dalam format JSON sesuai skema yang diminta.`
     console.log(`[generate] Request: niche=${niche}, audience=${audience}, tone=${tone}, format=${format}, product=${productTitle || '-'}`)
 
     const response = await ai.models.generateContent({
-      model: 'gemini-3.6-flash',
+      model: process.env.GEMINI_MODEL ?? 'gemini-3.7-flash',
       contents: prompt,
       config: {
         responseMimeType: 'application/json',
